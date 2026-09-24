@@ -45,15 +45,14 @@ except Exception:
 
 
 # ================= Token Worker =================
-# این worker همان رفتار قبلی را حفظ می‌کند: حساب جدید را از صف می‌خواند،
-# session را می‌سازد و رکورد مدیریتی را در hash قرار می‌دهد.
 def token_worker():
     while True:
         if db:
             try:
-                raw_data = db.lpop("bot:new_accounts")
-                if raw_data:
-                    acc = json.loads(raw_data)
+                # ۱. خواندن و تولید لینک برای اکانت‌های دیجی‌جت
+                raw_data_jet = db.lpop("bot:new_accounts")
+                if raw_data_jet:
+                    acc = json.loads(raw_data_jet)
                     token = secrets.token_urlsafe(14)
                     now_str = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
 
@@ -75,9 +74,45 @@ def token_worker():
                         acc.get("phone", ""),
                         json.dumps(record, ensure_ascii=False),
                     )
+
+                # ۲. خواندن و تولید لینک برای اکانت‌های دیجی‌کالای اصلی
+                raw_data_dg = db.lpop("bot:new_accounts_digikala")
+                if raw_data_dg:
+                    acc = json.loads(raw_data_dg)
+                    token = secrets.token_urlsafe(14)
+                    now_str = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+
+                    # ذخیره دیتای کوکی‌های دیجی‌کالا در همان ساختار لینک‌های امن
+                    session_data = {
+                        "service": "digikala",
+                        "cookies": acc.get("cookies", []),
+                        "tokens": acc.get("tokens", {})
+                    }
+                    
+                    db.setex(
+                        f"jet_session:{token}",
+                        30 * 24 * 3600,
+                        json.dumps(session_data, ensure_ascii=False),
+                    )
+
+                    # اضافه کردن اکانت دیجی‌کالا به لیست حساب‌های پنل برای نمایش
+                    record = {
+                        "phone": acc.get("phone", ""),
+                        "name": "اکانت دیجی‌کالا",
+                        "token": token,
+                        "created_at": now_str,
+                        "total_orders": 0,
+                    }
+                    db.hset(
+                        "jet:bulk_accounts",
+                        acc.get("phone", ""),
+                        json.dumps(record, ensure_ascii=False),
+                    )
+
             except Exception:
                 pass
         time.sleep(1)
+
 
 
 threading.Thread(target=token_worker, daemon=True).start()
